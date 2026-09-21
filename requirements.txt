@@ -1,0 +1,32 @@
+# PDF Workspace - Dependencies
+# All dependencies work fully offline after installation
+
+# UI Framework
+kivy>=2.3.0
+kivymd>=2.0.1
+
+# PDF Processing (pure Python - Android compatible)
+pypdf>=4.0.0
+
+# Enhanced PDF processing (optional, desktop)
+# pdfplumber>=0.11.0  # Better table detection
+# PyMuPDF>=1.24.0     # Fastest, desktop only
+
+# OCR (optional - app works without it)
+# pytesseract>=0.3.10  # Desktop only, requires Tesseract binary
+# pdf2image>=1.17.0    # Desktop only, for rendering PDF pages
+
+# Export formats (pure Python - Android compatible)
+python-docx>=1.1.0
+openpyxl>=3.1.0
+
+# Image processing & OCR
+Pillow>=10.0.0
+chrome-lens-py>=3.5.3
+
+# Web Server & Online Mode
+flask>=3.0.0
+
+# Testing
+pytest>=8.0.0
+

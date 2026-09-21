@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Workspace Online — Google Lens OCR & Visual Search</title>
+  <meta name="theme-color" content="#1e293b">
+  <link rel="manifest" href="/static/manifest.json">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    .highlight-overlay {
+      position: absolute;
+      pointer-events: none;
+      background-color: rgba(234, 179, 8, 0.35);
+      border: 2px solid #eab308;
+      border-radius: 2px;
+      box-shadow: 0 0 6px rgba(234, 179, 8, 0.6);
+      transition: all 0.15s ease-in-out;
+    }
+    .highlight-active {
+      background-color: rgba(249, 115, 22, 0.45) !important;
+      border: 2px solid #f97316 !important;
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.8) !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex flex-col h-screen overflow-hidden font-sans">
+
+  <!-- TOP HEADER (Row 1) -->
+  <header class="bg-slate-800 border-b border-slate-700 px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md">
+    <div class="flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold shadow">
+        <i data-lucide="file-text" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="text-base font-bold text-white tracking-wide flex items-center gap-2">
+          PDF Workspace Online
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-700 text-emerald-300 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Online Mode
+          </span>
+        </h1>
+        <p class="text-xs text-slate-400" id="docStatusSubtitle">No document open</p>
+      </div>
+    </div>
+
+    <!-- Actions & Engine Indicator -->
+    <div class="flex items-center space-x-3">
+      <!-- Google Lens Badge -->
+      <div class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-950/60 border border-amber-600/40 text-amber-300 text-xs font-medium">
+        <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
+        <span>Google Lens OCR (Active)</span>
+      </div>
+
+      <!-- Upload Button -->
+      <button onclick="openUploadModal()" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-md shadow transition">
+        <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+        <span>Upload PDF</span>
+      </button>
+
+      <!-- Export Dropdown -->
+      <div class="relative group">
+        <button id="btnExportMenu" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs sm:text-sm font-semibold px-3.5 py-1.5 rounded-md shadow transition disabled:opacity-50" disabled>
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Export</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+        </button>
+        <div class="absolute right-0 mt-1 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-xl py-1 hidden group-hover:block z-50">
+          <button onclick="exportDocument('xlsx')" class="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+            <i data-lucide="table" class="w-3.5 h-3.5 text-emerald-400"></i> Excel (.xlsx)
+          </button>
+          <button onclick="exportDocument('csv')" class="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-blue-400"></i> CSV (.csv)
+          </button>
+          <button onclick="exportDocument('docx')" class="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+            <i data-lucide="file" class="w-3.5 h-3.5 text-indigo-400"></i> Word (.docx)
+          </button>
+          <button onclick="exportDocument('json')" class="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+            <i data-lucide="code" class="w-3.5 h-3.5 text-amber-400"></i> JSON (.json)
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- SEARCH TOOLBAR (Row 2 - Spacious, Dedicated) -->
+  <div class="bg-slate-950 border-b border-slate-800 px-4 py-2 flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
+    <div class="flex items-center gap-1.5 text-sky-400 text-xs font-bold uppercase tracking-wider shrink-0">
+      <i data-lucide="search" class="w-4 h-4"></i>
+      <span>Search:</span>
+    </div>
+
+    <!-- Scope Filter -->
+    <div class="shrink-0">
+      <select id="searchScope" onchange="triggerSearch()" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-sky-500 cursor-pointer">
+        <option value="all">All Fields</option>
+        <option value="name">Names Only (नाम)</option>
+        <option value="voter_id">Voter ID (EPIC)</option>
+        <option value="exact">Exact Word (सटीक)</option>
+      </select>
+    </div>
+
+    <!-- Spacious Input Box -->
+    <div class="relative flex-1 min-w-[240px]">
+      <input 
+        type="text" 
+        id="searchQuery" 
+        placeholder="Type Hindi or English word, name, EPIC, or house number (e.g. मनोज, राजेंद्र, 12, महिला)..." 
+        class="w-full bg-slate-900 border border-slate-700 focus:border-sky-500 rounded-md pl-3 pr-8 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        onkeydown="if(event.key==='Enter') triggerSearch()"
+        oninput="handleSearchInput(event)"
+      />
+      <button onclick="clearSearch()" id="btnClearSearch" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white hidden">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Search Buttons & Navigation -->
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button onclick="triggerSearch()" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 py-1.5 rounded flex items-center gap-1 transition">
+        <span>Search</span>
+      </button>
+
+      <button onclick="navigateSearch(-1)" id="btnPrevMatch" class="bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white text-xs px-2 py-1.5 rounded transition" disabled title="Previous match">
+        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+      </button>
+
+      <button onclick="navigateSearch(1)" id="btnNextMatch" class="bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white text-xs px-2 py-1.5 rounded transition" disabled title="Next match">
+        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Match Counter Badge -->
+      <span id="searchBadge" class="text-xs font-bold text-sky-400 px-2.5 py-1 rounded bg-slate-800 border border-slate-700 min-w-[90px] text-center">
+        Ready
+      </span>
+
+      <button onclick="switchTab('tabSearchResults')" id="btnViewAllMatches" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs px-2.5 py-1.5 rounded border border-slate-700 transition hidden sm:inline-block">
+        📋 All Hits
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN WORKSPACE CONTAINER -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT SIDEBAR: Thumbnails & Page List -->
+    <aside class="w-48 bg-slate-850 border-r border-slate-800 flex flex-col shrink-0 hidden md:flex">
+      <div class="p-2.5 border-b border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+        <span>Pages</span>
+        <span id="pageCountBadge" class="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded text-[10px]">0</span>
+      </div>
+      <div id="pagesList" class="flex-1 overflow-y-auto p-1.5 space-y-1">
+        <!-- Page items populated dynamically -->
+        <div class="text-xs text-slate-500 p-3 text-center">No PDF loaded</div>
+      </div>
+    </aside>
+
+    <!-- CENTER PANE: Visual PDF Viewer -->
+    <main class="flex-1 flex flex-col bg-slate-950 overflow-hidden relative">
+      <!-- Viewer Controls -->
+      <div class="bg-slate-900 border-b border-slate-800 px-3 py-1.5 flex items-center justify-between shrink-0 text-xs">
+        <div class="flex items-center space-x-2">
+          <button onclick="changePage(-1)" class="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white" title="Previous Page">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
+          <span class="text-slate-300">
+            Page <input type="number" id="pageNumberInput" min="1" value="1" onchange="jumpToPage(parseInt(this.value))" class="w-12 bg-slate-800 border border-slate-700 rounded px-1 text-center text-white" /> of <span id="totalPagesText">0</span>
+          </span>
+          <button onclick="changePage(1)" class="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white" title="Next Page">
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <button onclick="adjustZoom(-0.15)" class="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white" title="Zoom Out">
+            <i data-lucide="zoom-out" class="w-4 h-4"></i>
+          </button>
+          <span id="zoomLabel" class="text-slate-400 font-mono text-[11px] w-12 text-center">100%</span>
+          <button onclick="adjustZoom(0.15)" class="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white" title="Zoom In">
+            <i data-lucide="zoom-in" class="w-4 h-4"></i>
+          </button>
+          <button onclick="resetZoom()" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px]">Fit</button>
+        </div>
+      </div>
+
+      <!-- PDF Canvas / Image Viewport -->
+      <div id="viewerScrollArea" class="flex-1 overflow-auto p-4 flex justify-center items-start relative select-none">
+        <div id="pageContainer" class="relative inline-block shadow-2xl bg-white rounded border border-slate-800">
+          <img id="pdfPageImage" src="" alt="PDF Page" class="block max-w-none transition-transform origin-top-left" style="display:none;" />
+          <div id="highlightLayer" class="absolute inset-0 pointer-events-none"></div>
+        </div>
+        <div id="emptyViewerState" class="m-auto text-center py-20">
+          <i data-lucide="file-up" class="w-16 h-16 text-slate-700 mx-auto mb-3"></i>
+          <p class="text-sm text-slate-400 font-medium">Upload a PDF to view pages, search Hindi words, and extract voter cards</p>
+          <button onclick="openUploadModal()" class="mt-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-md transition shadow">
+            Upload PDF Document
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANE: Tabbed Intelligence & Data Grid -->
+    <section class="w-96 lg:w-[480px] bg-slate-900 border-l border-slate-800 flex flex-col shrink-0">
+      <!-- Tab Headers -->
+      <div class="flex border-b border-slate-800 bg-slate-850 shrink-0 text-xs font-medium">
+        <button onclick="switchTab('tabRecords')" id="btnTabRecords" class="flex-1 py-2.5 px-3 text-center border-b-2 border-blue-500 text-blue-400 font-bold flex items-center justify-center gap-1.5">
+          <i data-lucide="table-2" class="w-3.5 h-3.5"></i>
+          <span>Cards & Tables</span>
+          <span id="tabRecordBadge" class="bg-blue-900 text-blue-300 text-[10px] px-1 rounded">0</span>
+        </button>
+        <button onclick="switchTab('tabSearchResults')" id="btnTabSearchResults" class="flex-1 py-2.5 px-3 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5">
+          <i data-lucide="list-filter" class="w-3.5 h-3.5"></i>
+          <span>Search Hits</span>
+          <span id="tabSearchBadge" class="bg-slate-800 text-slate-400 text-[10px] px-1 rounded">0</span>
+        </button>
+        <button onclick="switchTab('tabTextLayer')" id="btnTabTextLayer" class="flex-1 py-2.5 px-3 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+          <span>OCR Text</span>
+        </button>
+      </div>
+
+      <!-- Tab Content 1: Structured Records Grid -->
+      <div id="tabRecords" class="flex-1 flex flex-col overflow-hidden p-2">
+        <div class="flex items-center justify-between mb-2">
+          <input type="text" id="recordFilterInput" oninput="filterRecordRows()" placeholder="Filter cards in table..." class="w-full bg-slate-800 border border-slate-700 text-xs rounded px-2.5 py-1 text-white placeholder-slate-500 focus:outline-none" />
+        </div>
+        <div class="flex-1 overflow-auto border border-slate-800 rounded bg-slate-950">
+          <table class="w-full text-left text-xs border-collapse" id="recordsTable">
+            <thead class="bg-slate-850 sticky top-0 text-slate-400 uppercase text-[10px] border-b border-slate-800">
+              <tr id="recordsTableHeaders">
+                <th class="p-2">Sl</th>
+                <th class="p-2">EPIC</th>
+                <th class="p-2">Name (नाम)</th>
+                <th class="p-2">Relation (पिता)</th>
+                <th class="p-2">House</th>
+                <th class="p-2">Age</th>
+                <th class="p-2">Gender</th>
+                <th class="p-2">Pg</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTableBody" class="divide-y divide-slate-800 text-slate-200">
+              <tr>
+                <td colspan="8" class="text-center py-8 text-slate-500">No records extracted yet</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab Content 2: Search Results List -->
+      <div id="tabSearchResults" class="flex-1 overflow-y-auto p-3 space-y-2 hidden">
+        <div id="searchResultsList" class="space-y-2">
+          <div class="text-xs text-slate-500 text-center py-10">
+            Type words in the top search bar to find matching voter cards and lines across all pages.
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 3: Raw OCR Text Layer -->
+      <div id="tabTextLayer" class="flex-1 overflow-y-auto p-3 hidden">
+        <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+          <span>Page Text (Google Lens & Tesseract)</span>
+          <button onclick="copyPageText()" class="text-blue-400 hover:text-blue-300 flex items-center gap-1">
+            <i data-lucide="copy" class="w-3 h-3"></i> Copy
+          </button>
+        </div>
+        <pre id="rawTextContent" class="text-xs text-slate-300 font-mono bg-slate-950 p-3 rounded border border-slate-800 whitespace-pre-wrap select-text leading-relaxed">
+No text for current page
+        </pre>
+      </div>
+    </section>
+  </div>
+
+  <!-- UPLOAD MODAL -->
+  <div id="uploadModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-800 border border-slate-700 rounded-xl max-w-lg w-full p-6 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-700">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-400"></i>
+          Import PDF into Workspace
+        </h3>
+        <button onclick="closeUploadModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="uploadForm" onsubmit="handleUploadSubmit(event)" class="mt-4 space-y-4">
+        <!-- Drag & Drop Zone -->
+        <div id="dropZone" class="border-2 border-dashed border-slate-600 hover:border-blue-500 rounded-lg p-6 text-center cursor-pointer transition bg-slate-900/50">
+          <i data-lucide="file-plus" class="w-10 h-10 text-slate-400 mx-auto mb-2"></i>
+          <p class="text-sm font-semibold text-slate-200" id="dropZoneLabel">Drop PDF file here or click to browse</p>
+          <p class="text-xs text-slate-400 mt-1">Accepts all scanned/digital PDFs up to 250MB</p>
+          <input type="file" id="fileInput" name="file" accept=".pdf" class="hidden" onchange="onFileSelected(this)" />
+        </div>
+
+        <!-- Options -->
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-300 mb-1">⚡ OCR Engine</label>
+            <select name="ocr_engine" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white">
+              <option value="lens" selected>⚡ Google Lens (Online - Best)</option>
+              <option value="tesseract">💻 Local Tesseract (Offline)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-300 mb-1">🌐 OCR Language</label>
+            <select name="ocr_language" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white">
+              <option value="eng+hin" selected>English + Hindi</option>
+              <option value="hin">Hindi Only</option>
+              <option value="eng">English Only</option>
+            </select>
+          </div>
+          <div class="col-span-2">
+            <label class="block font-semibold text-slate-300 mb-1">📑 Layout Mode</label>
+            <select name="layout_mode" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white">
+              <option value="auto" selected>Auto-Detect (Smart)</option>
+              <option value="voter_list">Voter List / मतदाता सूची (3-Column Cards)</option>
+              <option value="table">Standard Data Table</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Progress bar (hidden initially) -->
+        <div id="uploadProgressContainer" class="hidden space-y-1.5 pt-2">
+          <div class="flex justify-between text-xs text-slate-400">
+            <span id="uploadProgressText">Processing with Google Lens...</span>
+            <span id="uploadProgressPercent">0%</span>
+          </div>
+          <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+            <div id="uploadProgressBar" class="bg-blue-500 h-2 rounded-full transition-all duration-300 w-0"></div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-700">
+          <button type="button" onclick="closeUploadModal()" class="px-4 py-1.5 rounded text-xs font-semibold text-slate-300 hover:bg-slate-700">Cancel</button>
+          <button type="submit" id="btnUploadSubmit" class="px-5 py-1.5 rounded text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow flex items-center gap-1.5">
+            <i data-lucide="zap" class="w-4 h-4"></i> Start Processing
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <script>
+    // State
+    const state = {
+      activeDocId: null,
+      currentPage: 1,
+      totalPages: 0,
+      zoom: 1.0,
+      pageWidth: 0,
+      pageHeight: 0,
+      searchResults: [],
+      currentMatchIdx: -1,
+      records: [],
+      filteredRecords: [],
+      searchDebounceTimer: null
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      initDropZone();
+      checkSystemStatus();
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+      }
+    });
+
+    async function checkSystemStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        if (data.active_doc_id) {
+          state.activeDocId = data.active_doc_id;
+          await loadDocument(data.active_doc_id);
+        }
+      } catch (err) {
+        console.error('Status check error:', err);
+      }
+    }
+
+    async function loadDocument(docId) {
+      state.activeDocId = docId;
+      document.getElementById('btnExportMenu').disabled = false;
+      try {
+        const res = await fetch(`/api/documents/${docId}`);
+        const doc = await res.json();
+        state.totalPages = doc.total_pages;
+        state.currentPage = 1;
+
+        document.getElementById('docStatusSubtitle').textContent = `${doc.filename} — ${doc.total_pages} pages, ${doc.total_records} records`;
+        document.getElementById('totalPagesText').textContent = doc.total_pages;
+        document.getElementById('pageNumberInput').max = doc.total_pages;
+        document.getElementById('pageCountBadge').textContent = doc.total_pages;
+
+        renderPagesSidebar(doc.pages || []);
+        await renderCurrentPage();
+        await loadRecords();
+      } catch (e) {
+        console.error('Failed to load document:', e);
+      }
+    }
+
+    function renderPagesSidebar(pages, matchCounts = {}) {
+      const list = document.getElementById('pagesList');
+      list.innerHTML = '';
+      pages.forEach((p, idx) => {
+        const pageNum = idx + 1;
+        const count = matchCounts[pageNum] || 0;
+        const div = document.createElement('div');
+        div.className = `px-3 py-2 rounded text-xs cursor-pointer flex items-center justify-between transition ${pageNum === state.currentPage ? 'bg-blue-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`;
+        div.onclick = () => jumpToPage(pageNum);
+        div.innerHTML = `
+          <span>Page ${pageNum}</span>
+          ${count > 0 ? `<span class="bg-amber-500 text-slate-900 font-bold px-1.5 py-0.2 rounded-full text-[10px]">★ ${count}</span>` : ''}
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    async function renderCurrentPage() {
+      if (!state.activeDocId || state.totalPages <= 0) return;
+      document.getElementById('emptyViewerState').style.display = 'none';
+      const img = document.getElementById('pdfPageImage');
+      img.style.display = 'block';
+
+      // Load rendered PNG
+      img.src = `/api/documents/${state.activeDocId}/pages/${state.currentPage}/image?dpi=150&t=${Date.now()}`;
+      img.onload = () => {
+        applyZoom();
+        updateHighlights();
+      };
+
+      document.getElementById('pageNumberInput').value = state.currentPage;
+
+      // Update OCR text tab
+      loadPageText();
+    }
+
+    function applyZoom() {
+      const img = document.getElementById('pdfPageImage');
+      const hlLayer = document.getElementById('highlightLayer');
+      img.style.transform = `scale(${state.zoom})`;
+      img.style.transformOrigin = 'top left';
+      hlLayer.style.transform = `scale(${state.zoom})`;
+      hlLayer.style.transformOrigin = 'top left';
+      document.getElementById('zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
+    }
+
+    function adjustZoom(delta) {
+      state.zoom = Math.max(0.3, Math.min(3.0, state.zoom + delta));
+      applyZoom();
+    }
+
+    function resetZoom() {
+      state.zoom = 1.0;
+      applyZoom();
+    }
+
+    function changePage(delta) {
+      jumpToPage(state.currentPage + delta);
+    }
+
+    function jumpToPage(num) {
+      if (num < 1 || num > state.totalPages) return;
+      state.currentPage = num;
+      renderCurrentPage();
+    }
+
+    async function loadPageText() {
+      if (!state.activeDocId) return;
+      try {
+        const res = await fetch(`/api/documents/${state.activeDocId}/pages/${state.currentPage}/text`);
+        const data = await res.json();
+        document.getElementById('rawTextContent').textContent = data.raw_text || data.processed_text || 'No text extracted for this page.';
+      } catch (err) {
+        document.getElementById('rawTextContent').textContent = 'Error loading text.';
+      }
+    }
+
+    // --- Search Engine Integration ---
+    function handleSearchInput(e) {
+      const query = e.target.value.trim();
+      document.getElementById('btnClearSearch').style.display = query ? 'block' : 'none';
+      clearTimeout(state.searchDebounceTimer);
+      if (query.length >= 1) {
+        state.searchDebounceTimer = setTimeout(() => triggerSearch(), 300);
+      } else {
+        clearSearch();
+      }
+    }
+
+    async function triggerSearch() {
+      const query = document.getElementById('searchQuery').value.trim();
+      if (!query || !state.activeDocId) return;
+
+      const scope = document.getElementById('searchScope').value;
+      document.getElementById('searchBadge').textContent = 'Searching...';
+
+      try {
+        const res = await fetch(`/api/documents/${state.activeDocId}/search?q=${encodeURIComponent(query)}&scope=${scope}`);
+        const data = await res.json();
+        state.searchResults = data.results || [];
+        state.currentMatchIdx = state.searchResults.length > 0 ? 0 : -1;
+
+        document.getElementById('searchBadge').textContent = `${state.searchResults.length} matches`;
+        document.getElementById('tabSearchBadge').textContent = state.searchResults.length;
+        document.getElementById('btnPrevMatch').disabled = state.searchResults.length <= 1;
+        document.getElementById('btnNextMatch').disabled = state.searchResults.length <= 1;
+
+        // Render sidebar with hit counts
+        const pageListRes = await fetch(`/api/documents/${state.activeDocId}`);
+        const docInfo = await pageListRes.json();
+        renderPagesSidebar(docInfo.pages, data.page_counts || {});
+
+        // Render results list tab
+        renderSearchResultsList(state.searchResults);
+
+        // Jump to first match
+        if (state.searchResults.length > 0) {
+          const first = state.searchResults[0];
+          jumpToPage(first.page_number);
+        } else {
+          updateHighlights();
+        }
+      } catch (e) {
+        console.error('Search error:', e);
+        document.getElementById('searchBadge').textContent = 'Error';
+      }
+    }
+
+    function clearSearch() {
+      document.getElementById('searchQuery').value = '';
+      document.getElementById('btnClearSearch').style.display = 'none';
+      document.getElementById('searchBadge').textContent = 'Ready';
+      document.getElementById('tabSearchBadge').textContent = '0';
+      state.searchResults = [];
+      state.currentMatchIdx = -1;
+      document.getElementById('btnPrevMatch').disabled = true;
+      document.getElementById('btnNextMatch').disabled = true;
+      document.getElementById('highlightLayer').innerHTML = '';
+      renderSearchResultsList([]);
+    }
+
+    function navigateSearch(delta) {
+      if (state.searchResults.length === 0) return;
+      state.currentMatchIdx = (state.currentMatchIdx + delta + state.searchResults.length) % state.searchResults.length;
+      const match = state.searchResults[state.currentMatchIdx];
+      document.getElementById('searchBadge').textContent = `${state.currentMatchIdx + 1}/${state.searchResults.length} (Pg ${match.page_number})`;
+      jumpToPage(match.page_number);
+    }
+
+    async function updateHighlights() {
+      const hlLayer = document.getElementById('highlightLayer');
+      hlLayer.innerHTML = '';
+      const query = document.getElementById('searchQuery').value.trim();
+      if (!query || !state.activeDocId) return;
+
+      try {
+        const res = await fetch(`/api/documents/${state.activeDocId}/pages/${state.currentPage}/highlights?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        const boxes = data.boxes || [];
+        const pw = data.page_width;
+        const ph = data.page_height;
+
+        const img = document.getElementById('pdfPageImage');
+        const imgW = img.naturalWidth || img.clientWidth;
+        const imgH = img.naturalHeight || img.clientHeight;
+
+        hlLayer.style.width = `${imgW}px`;
+        hlLayer.style.height = `${imgH}px`;
+
+        boxes.forEach((box, i) => {
+          const [x0, y0, x1, y1] = box;
+          const scaleX = imgW / pw;
+          const scaleY = imgH / ph;
+
+          const left = x0 * scaleX;
+          const top = y0 * scaleY;
+          const width = (x1 - x0) * scaleX;
+          const height = (y1 - y0) * scaleY;
+
+          const div = document.createElement('div');
+          div.className = 'highlight-overlay';
+          div.style.left = `${left}px`;
+          div.style.top = `${top}px`;
+          div.style.width = `${width}px`;
+          div.style.height = `${height}px`;
+          hlLayer.appendChild(div);
+        });
+      } catch (err) {
+        console.error('Highlight error:', err);
+      }
+    }
+
+    function renderSearchResultsList(results) {
+      const container = document.getElementById('searchResultsList');
+      if (results.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-500 text-center py-10">No search results found</div>';
+        return;
+      }
+      container.innerHTML = '';
+      results.forEach((r, idx) => {
+        const item = document.createElement('div');
+        item.className = 'p-2.5 rounded bg-slate-950 border border-slate-800 hover:border-sky-500 cursor-pointer text-xs transition';
+        item.onclick = () => {
+          state.currentMatchIdx = idx;
+          document.getElementById('searchBadge').textContent = `${idx + 1}/${results.length} (Pg ${r.page_number})`;
+          jumpToPage(r.page_number);
+        };
+        item.innerHTML = `
+          <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+            <span class="font-bold text-sky-400">Page ${r.page_number}</span>
+            <span class="bg-slate-800 px-1.5 py-0.2 rounded text-[10px]">${r.field_name}</span>
+          </div>
+          <div class="text-slate-200 line-clamp-2 leading-relaxed">${r.snippet}</div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    // --- Records Grid ---
+    async function loadRecords() {
+      if (!state.activeDocId) return;
+      try {
+        const res = await fetch(`/api/documents/${state.activeDocId}/records`);
+        const data = await res.json();
+        state.records = data.records || [];
+        state.filteredRecords = [...state.records];
+        document.getElementById('tabRecordBadge').textContent = state.records.length;
+        renderRecordsTable(state.filteredRecords);
+      } catch (e) {
+        console.error('Failed to load records:', e);
+      }
+    }
+
+    function renderRecordsTable(records) {
+      const tbody = document.getElementById('recordsTableBody');
+      if (records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-500">No records found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      records.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/60 cursor-pointer transition';
+        tr.onclick = () => jumpToPage(r.page_number);
+        tr.innerHTML = `
+          <td class="p-2 font-mono text-[11px] text-slate-400">${r.serial_no || '-'}</td>
+          <td class="p-2 font-mono text-[11px] text-amber-400 font-bold">${r.voter_id || '-'}</td>
+          <td class="p-2 font-medium text-slate-100">${r.name || '-'}</td>
+          <td class="p-2 text-slate-300">${r.relation_name || '-'}</td>
+          <td class="p-2 text-slate-400">${r.house_no || '-'}</td>
+          <td class="p-2 text-slate-400">${r.age || '-'}</td>
+          <td class="p-2 text-slate-400">${r.gender || '-'}</td>
+          <td class="p-2 font-bold text-sky-400">${r.page_number}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterRecordRows() {
+      const term = document.getElementById('recordFilterInput').value.toLowerCase().trim();
+      if (!term) {
+        renderRecordsTable(state.records);
+        return;
+      }
+      const filtered = state.records.filter(r => {
+        return Object.values(r).some(v => String(v).toLowerCase().includes(term));
+      });
+      renderRecordsTable(filtered);
+    }
+
+    // --- Tab Switching ---
+    function switchTab(tabId) {
+      ['tabRecords', 'tabSearchResults', 'tabTextLayer'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById(tabId).classList.remove('hidden');
+
+      const tabs = {
+        tabRecords: 'btnTabRecords',
+        tabSearchResults: 'btnTabSearchResults',
+        tabTextLayer: 'btnTabTextLayer'
+      };
+
+      Object.entries(tabs).forEach(([tid, bid]) => {
+        const btn = document.getElementById(bid);
+        if (tid === tabId) {
+          btn.className = 'flex-1 py-2.5 px-3 text-center border-b-2 border-blue-500 text-blue-400 font-bold flex items-center justify-center gap-1.5';
+        } else {
+          btn.className = 'flex-1 py-2.5 px-3 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5';
+        }
+      });
+    }
+
+    // --- Export ---
+    function exportDocument(format) {
+      if (!state.activeDocId) return;
+      window.location.href = `/api/documents/${state.activeDocId}/export/${format}`;
+    }
+
+    // --- Upload Modal & Drag-Drop ---
+    function openUploadModal() {
+      document.getElementById('uploadModal').classList.remove('hidden');
+    }
+    function closeUploadModal() {
+      document.getElementById('uploadModal').classList.add('hidden');
+    }
+
+    function initDropZone() {
+      const dz = document.getElementById('dropZone');
+      const fi = document.getElementById('fileInput');
+
+      dz.onclick = () => fi.click();
+
+      dz.ondragover = (e) => {
+        e.preventDefault();
+        dz.classList.add('border-blue-500', 'bg-blue-950/20');
+      };
+      dz.ondragleave = () => {
+        dz.classList.remove('border-blue-500', 'bg-blue-950/20');
+      };
+      dz.ondrop = (e) => {
+        e.preventDefault();
+        dz.classList.remove('border-blue-500', 'bg-blue-950/20');
+        if (e.dataTransfer.files.length > 0) {
+          fi.files = e.dataTransfer.files;
+          onFileSelected(fi);
+        }
+      };
+    }
+
+    function onFileSelected(input) {
+      if (input.files.length > 0) {
+        document.getElementById('dropZoneLabel').textContent = `Selected: ${input.files[0].name}`;
+      }
+    }
+
+    async function handleUploadSubmit(e) {
+      e.preventDefault();
+      const form = document.getElementById('uploadForm');
+      const formData = new FormData(form);
+
+      const file = formData.get('file');
+      if (!file || !file.name) {
+        alert('Please select a PDF file first.');
+        return;
+      }
+
+      // Show progress
+      const pContainer = document.getElementById('uploadProgressContainer');
+      const pBar = document.getElementById('uploadProgressBar');
+      const pText = document.getElementById('uploadProgressText');
+      const btnSubmit = document.getElementById('btnUploadSubmit');
+
+      pContainer.classList.remove('hidden');
+      btnSubmit.disabled = true;
+      pBar.style.width = '35%';
+      pText.textContent = 'Uploading & running Google Lens OCR...';
+
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        pBar.style.width = '85%';
+        const data = await res.json();
+
+        if (data.success) {
+          pBar.style.width = '100%';
+          pText.textContent = 'Complete!';
+          setTimeout(() => {
+            closeUploadModal();
+            pContainer.classList.add('hidden');
+            btnSubmit.disabled = false;
+            loadDocument(data.doc_id);
+          }, 600);
+        } else {
+          alert(`Processing Error: ${data.error || 'Failed to process PDF'}`);
+          pContainer.classList.add('hidden');
+          btnSubmit.disabled = false;
+        }
+      } catch (err) {
+        alert(`Upload error: ${err.message}`);
+        pContainer.classList.add('hidden');
+        btnSubmit.disabled = false;
+      }
+    }
+
+    function copyPageText() {
+      const text = document.getElementById('rawTextContent').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Page text copied to clipboard!');
+      });
+    }
+  </script>
+</body>
+</html>
