@@ -28,7 +28,7 @@ version = 1.0.1
 # Pin both python3 and hostpython3 to 3.11.5 (avoids Python 3.14 C-API removal of ma_version_tag)
 # Pin chardet==5.2.0 (pure Python wheel, avoids x86-64 mypyc .so files on ARM64)
 # DOCX export uses pure-Python OpenXML fallback in app/exporters/docx_exporter.py (no lxml needed)
-requirements = python3==3.11.5,hostpython3==3.11.5,kivy,pillow,pypdf,openpyxl,et_xmlfile,pyjnius,certifi,urllib3,requests,chardet==5.2.0,idna,filetype
+requirements = python3==3.11.5,hostpython3==3.11.5,kivy,pillow,pypdf,openpyxl,et_xmlfile,pyjnius,certifi,urllib3,requests,idna,filetype
 
 # (str) Presplash of the application
 #presplash.filename = %(source.dir)s/assets/icons/presplash.png

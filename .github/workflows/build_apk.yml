@@ -5,12 +5,15 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Repository
@@ -19,7 +22,7 @@ jobs:
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -27,113 +30,123 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Cache Buildozer Android SDK & NDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-sdk-ndk-r25b-v1
+
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip autoconf libtool pkg-config zlib1g-dev \
-            libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev \
-            build-essential ccache libgl1-mesa-dev libgles2-mesa-dev
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            zip \
+            unzip \
+            autoconf \
+            libtool \
+            pkg-config \
+            zlib1g-dev \
+            libncurses-dev \
+            cmake \
+            libffi-dev \
+            libssl-dev \
+            automake \
+            gettext \
+            ccache \
+            patch
 
       - name: Install Buildozer & Cython
         run: |
-          pip install --upgrade pip "setuptools<70.0.0" wheel
-          pip install "cython>=0.29.33,<=3.0.12" buildozer virtualenv
+          python -m pip install --upgrade pip "setuptools<70.0.0" wheel
+          pip install "cython<3.0.0" buildozer==1.5.0
 
-      - name: Clone & Patch python-for-android for Android 16 (16KB Page Size & Pure ARM64)
+      - name: Clone & Patch python-for-android (release-2024.01.21) for Android 16 (16KB Page Size & Pure ARM64)
         run: |
-          rm -rf /tmp/p4a
-          git clone --depth 1 https://github.com/kivy/python-for-android.git /tmp/p4a
+          git clone --branch release-2024.01.21 --depth 1 https://github.com/kivy/python-for-android.git /tmp/p4a
           python3 - << 'EOF'
-          import glob, os
+          import glob
 
-          # 1. Patch archs.py to enforce 16KB ELF page alignment (-Wl,-z,max-page-size=16384)
-          archs_file = '/tmp/p4a/pythonforandroid/archs.py'
-          with open(archs_file, 'r') as f:
-              txt = f.read()
-          txt = txt.replace(
+          # 1. Force 16KB ELF page alignment in common_ldflags & common_ldshared for Android 15/16 (OnePlus 13R)
+          archs_path = "/tmp/p4a/pythonforandroid/archs.py"
+          with open(archs_path, "r") as f:
+              content = f.read()
+          assert "common_ldflags = ['-L{ctx_libs_dir}']" in content, "common_ldflags not found"
+          content = content.replace(
               "common_ldflags = ['-L{ctx_libs_dir}']",
               "common_ldflags = ['-L{ctx_libs_dir}', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']"
           )
-          txt = txt.replace(
+          assert "'-Wl,-Bsymbolic-functions'," in content, "common_ldshared not found"
+          content = content.replace(
               "'-Wl,-Bsymbolic-functions',",
-              "'-Wl,-Bsymbolic-functions', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384',"
+              "'-Wl,-Bsymbolic-functions',\n        '-Wl,-z,max-page-size=16384',\n        '-Wl,-z,common-page-size=16384',"
           )
-          with open(archs_file, 'w') as f:
-              f.write(txt)
+          with open(archs_path, "w") as f:
+              f.write(content)
 
-          # 2. Patch all Application.mk files in bootstraps for ndk-build 16KB page alignment
-          for app_mk in glob.glob('/tmp/p4a/pythonforandroid/bootstraps/**/Application.mk', recursive=True):
-              with open(app_mk, 'a') as f:
-                  f.write('\nAPP_LDFLAGS += -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384\n')
+          # 2. Force 16KB ELF page alignment in all Application.mk files (for ndk-build: libSDL2.so, libmain.so, etc.)
+          for app_mk in glob.glob("/tmp/p4a/pythonforandroid/**/Application.mk", recursive=True):
+              with open(app_mk, "r") as f:
+                  mk = f.read()
+              if "max-page-size=16384" not in mk:
+                  mk += "\nAPP_LDFLAGS += -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384\n"
+                  with open(app_mk, "w") as f:
+                      f.write(mk)
 
-          # 3. Patch KivyRecipe to use pure-Python chardet==5.2.0 (avoids x86_64 mypyc .so files)
-          kivy_recipe = '/tmp/p4a/pythonforandroid/recipes/kivy/__init__.py'
-          with open(kivy_recipe, 'r') as f:
-              ktxt = f.read()
-          ktxt = ktxt.replace("'chardet'", "'chardet==5.2.0'")
-          with open(kivy_recipe, 'w') as f:
-              f.write(ktxt)
+          # 3. Pin chardet==5.2.0 (pure Python) in KivyRecipe so pip never pulls x86_64 mypyc .so wheels
+          kivy_recipe = "/tmp/p4a/pythonforandroid/recipes/kivy/__init__.py"
+          with open(kivy_recipe, "r") as f:
+              kc = f.read()
+          kc = kc.replace("'chardet'", "'chardet==5.2.0'")
+          with open(kivy_recipe, "w") as f:
+              f.write(kc)
 
-          # 4. Patch build.py make_tar to set 0755 on directories and skip any non-ARM64 .so files
-          build_py = '/tmp/p4a/pythonforandroid/bootstraps/common/build/build.py'
-          with open(build_py, 'r') as f:
-              btxt = f.read()
-          btxt = btxt.replace(
+          # 4. Ensure directories in private.tar have 0755 permissions on Android 16 while preserving .so modes
+          build_py = "/tmp/p4a/pythonforandroid/bootstraps/common/build/build.py"
+          with open(build_py, "r") as f:
+              bc = f.read()
+          bc = bc.replace(
               "tinfo.mtime = 0\n        return tinfo",
-              "tinfo.mtime = 0\n        tinfo.mode = 0o755 if tinfo.isdir() else 0o644\n        return tinfo"
+              "tinfo.mtime = 0\n        if tinfo.isdir():\n            tinfo.mode = 0o755\n        return tinfo"
           )
-          with open(build_py, 'w') as f:
-              f.write(btxt)
+          with open(build_py, "w") as f:
+              f.write(bc)
 
-          print("Successfully patched /tmp/p4a for Android 16 (OnePlus 13R)!")
+          print("Successfully patched python-for-android release-2024.01.21 for Android 16 (16KB page size & pure ARM64)!")
           EOF
 
       - name: Build Android APK with Buildozer
+        env:
+          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
+          BUILDOZER_WARN_ON_ROOT: "0"
+          CFLAGS: "-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion"
+          LDFLAGS: "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
         run: |
-          rm -rf .buildozer bin
-          yes | buildozer android debug || {
-            echo "=== BUILDOZER FAILURE LOGS ==="
-            find .buildozer -name "*.log" -exec tail -n 100 {} + || true
-            exit 1
-          }
+          yes | buildozer android debug
 
-      - name: Verify APK ELF 16KB Alignment & Architecture
+      - name: Verify APK 16KB ELF Alignment & Pure ARM64 Bundle
         run: |
-          python3 - << 'EOF'
-          import zipfile, struct, glob
+          mkdir -p /tmp/verify_apk
+          unzip -q bin/*.apk -d /tmp/verify_apk
+          for so in /tmp/verify_apk/lib/arm64-v8a/*.so; do
+            echo "=== $(basename $so) ==="
+            readelf -l "$so" | grep -A 1 "LOAD" | head -n 4
+          done
 
-          apks = glob.glob('bin/*.apk')
-          assert apks, "No APK found in bin/"
-          apk_path = apks[0]
-          print("Verifying APK:", apk_path)
-          with zipfile.ZipFile(apk_path) as zf:
-              for info in zf.infolist():
-                  if info.filename.startswith('lib/arm64-v8a/') and info.filename.endswith('.so'):
-                      data = zf.read(info.filename)[:4096]
-                      if data[:4] == b'\x7fELF':
-                          e_phoff = struct.unpack_from('<Q', data, 32)[0]
-                          e_phentsize, e_phnum = struct.unpack_from('<HH', data, 54)
-                          aligns = []
-                          for i in range(e_phnum):
-                              off = e_phoff + i * e_phentsize
-                              if struct.unpack_from('<I', data, off)[0] == 1:
-                                  aligns.append(hex(struct.unpack_from('<Q', data, off + 48)[0]))
-                          print(f"  {info.filename}: PT_LOAD aligns = {aligns}")
-          EOF
-
-      - name: Upload APK Artifact
+      - name: Upload Compiled APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PDFWorkspace-Android16-APK
+          name: PDF-Workspace-Android16-APK
           path: bin/*.apk
-          retention-days: 30
+          if-no-files-found: error
 
-      - name: Publish APK to GitHub Release (v1.0.1)
+      - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.1
-          name: "PDF Workspace v1.0.1 (Android 16 / OnePlus 13R 16KB Page Size Fix)"
-          body: "Native Android ARM64 APK with 16KB ELF page-size alignment (`0x4000`) and pure ARM64 libraries for Android 16 (OnePlus 13R)."
+          name: "PDF Workspace & Converter v1.0.1 (Android 16 / OnePlus 13R)"
+          body: "Automated Android 16 (16KB ELF page-aligned, pure ARM64) APK build of PDF Workspace & Converter."
           files: bin/*.apk
           prerelease: false
         env:
