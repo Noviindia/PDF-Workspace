@@ -25,16 +25,18 @@ jobs:
           python-version: '3.11'
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Cache Buildozer Android SDK & NDK
-        uses: actions/cache@v4
+      - name: Restore Buildozer Cache
+        uses: actions/cache/restore@v4
         with:
-          path: ~/.buildozer
-          key: buildozer-sdk-ndk-r25b-v1
+          path: |
+            ~/.buildozer
+            .buildozer/android/platform/build-arm64-v8a/packages
+          key: buildozer-sdk-ndk-r25b-v2
 
       - name: Install System Dependencies
         run: |
@@ -113,6 +115,17 @@ jobs:
           with open(build_py, "w") as f:
               f.write(bc)
 
+          # 5. Replace unreliable savannah.gnu.org URL in freetype recipe with fast SourceForge CDN mirror
+          freetype_recipe = "/tmp/p4a/pythonforandroid/recipes/freetype/__init__.py"
+          with open(freetype_recipe, "r") as f:
+              fc = f.read()
+          fc = fc.replace(
+              "https://download.savannah.gnu.org/releases/freetype/freetype-{version}.tar.gz",
+              "https://downloads.sourceforge.net/project/freetype/freetype2/{version}/freetype-{version}.tar.gz"
+          )
+          with open(freetype_recipe, "w") as f:
+              f.write(fc)
+
           print("Successfully patched python-for-android release-2024.01.21 for Android 16 (16KB page size & pure ARM64)!")
           EOF
 
@@ -123,7 +136,20 @@ jobs:
           CFLAGS: "-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion"
           LDFLAGS: "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
         run: |
+          mkdir -p .buildozer/android/platform/build-arm64-v8a/packages/freetype
+          curl --retry 5 -sL "https://downloads.sourceforge.net/project/freetype/freetype2/2.10.1/freetype-2.10.1.tar.gz" \
+            -o .buildozer/android/platform/build-arm64-v8a/packages/freetype/freetype-2.10.1.tar.gz
+          touch .buildozer/android/platform/build-arm64-v8a/packages/freetype/.mark-freetype-2.10.1.tar.gz
           yes | buildozer android debug
+
+      - name: Save Buildozer Cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer/android/platform/build-arm64-v8a/packages
+          key: buildozer-sdk-ndk-r25b-v2
 
       - name: Verify APK 16KB ELF Alignment & Pure ARM64 Bundle
         run: |
