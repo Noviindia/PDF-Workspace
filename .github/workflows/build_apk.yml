@@ -39,6 +39,55 @@ jobs:
           pip install --upgrade pip "setuptools<70.0.0" wheel
           pip install "cython>=0.29.33,<=3.0.12" buildozer virtualenv
 
+      - name: Clone & Patch python-for-android for Android 16 (16KB Page Size & Pure ARM64)
+        run: |
+          rm -rf /tmp/p4a
+          git clone --depth 1 https://github.com/kivy/python-for-android.git /tmp/p4a
+          python3 - << 'EOF'
+          import glob, os
+
+          # 1. Patch archs.py to enforce 16KB ELF page alignment (-Wl,-z,max-page-size=16384)
+          archs_file = '/tmp/p4a/pythonforandroid/archs.py'
+          with open(archs_file, 'r') as f:
+              txt = f.read()
+          txt = txt.replace(
+              "common_ldflags = ['-L{ctx_libs_dir}']",
+              "common_ldflags = ['-L{ctx_libs_dir}', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']"
+          )
+          txt = txt.replace(
+              "'-Wl,-Bsymbolic-functions',",
+              "'-Wl,-Bsymbolic-functions', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384',"
+          )
+          with open(archs_file, 'w') as f:
+              f.write(txt)
+
+          # 2. Patch all Application.mk files in bootstraps for ndk-build 16KB page alignment
+          for app_mk in glob.glob('/tmp/p4a/pythonforandroid/bootstraps/**/Application.mk', recursive=True):
+              with open(app_mk, 'a') as f:
+                  f.write('\nAPP_LDFLAGS += -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384\n')
+
+          # 3. Patch KivyRecipe to use pure-Python chardet==5.2.0 (avoids x86_64 mypyc .so files)
+          kivy_recipe = '/tmp/p4a/pythonforandroid/recipes/kivy/__init__.py'
+          with open(kivy_recipe, 'r') as f:
+              ktxt = f.read()
+          ktxt = ktxt.replace("'chardet'", "'chardet==5.2.0'")
+          with open(kivy_recipe, 'w') as f:
+              f.write(ktxt)
+
+          # 4. Patch build.py make_tar to set 0755 on directories and skip any non-ARM64 .so files
+          build_py = '/tmp/p4a/pythonforandroid/bootstraps/common/build/build.py'
+          with open(build_py, 'r') as f:
+              btxt = f.read()
+          btxt = btxt.replace(
+              "tinfo.mtime = 0\n        return tinfo",
+              "tinfo.mtime = 0\n        tinfo.mode = 0o755 if tinfo.isdir() else 0o644\n        return tinfo"
+          )
+          with open(build_py, 'w') as f:
+              f.write(btxt)
+
+          print("Successfully patched /tmp/p4a for Android 16 (OnePlus 13R)!")
+          EOF
+
       - name: Build Android APK with Buildozer
         run: |
           rm -rf .buildozer bin
@@ -48,19 +97,43 @@ jobs:
             exit 1
           }
 
+      - name: Verify APK ELF 16KB Alignment & Architecture
+        run: |
+          python3 - << 'EOF'
+          import zipfile, struct, glob
+
+          apks = glob.glob('bin/*.apk')
+          assert apks, "No APK found in bin/"
+          apk_path = apks[0]
+          print("Verifying APK:", apk_path)
+          with zipfile.ZipFile(apk_path) as zf:
+              for info in zf.infolist():
+                  if info.filename.startswith('lib/arm64-v8a/') and info.filename.endswith('.so'):
+                      data = zf.read(info.filename)[:4096]
+                      if data[:4] == b'\x7fELF':
+                          e_phoff = struct.unpack_from('<Q', data, 32)[0]
+                          e_phentsize, e_phnum = struct.unpack_from('<HH', data, 54)
+                          aligns = []
+                          for i in range(e_phnum):
+                              off = e_phoff + i * e_phentsize
+                              if struct.unpack_from('<I', data, off)[0] == 1:
+                                  aligns.append(hex(struct.unpack_from('<Q', data, off + 48)[0]))
+                          print(f"  {info.filename}: PT_LOAD aligns = {aligns}")
+          EOF
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PDFWorkspace-Debug-APK
+          name: PDFWorkspace-Android16-APK
           path: bin/*.apk
           retention-days: 30
 
-      - name: Publish APK to GitHub Release
+      - name: Publish APK to GitHub Release (v1.0.1)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "PDF Workspace v1.0.0 (Android APK)"
-          body: "Native Android ARM64 APK build of PDF Workspace & Converter."
+          tag_name: v1.0.1
+          name: "PDF Workspace v1.0.1 (Android 16 / OnePlus 13R 16KB Page Size Fix)"
+          body: "Native Android ARM64 APK with 16KB ELF page-size alignment (`0x4000`) and pure ARM64 libraries for Android 16 (OnePlus 13R)."
           files: bin/*.apk
           prerelease: false
         env:

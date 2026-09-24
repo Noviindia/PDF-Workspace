@@ -22,12 +22,13 @@ source.exclude_exts = spec,apk,zip
 source.exclude_dirs = tests,scripts,bin,.git,__pycache__,.venv,venv,.buildozer,.pdfworkspace
 
 # (str) Application versioning
-version = 1.0.0
+version = 1.0.1
 
 # (list) Application requirements
 # Pin both python3 and hostpython3 to 3.11.5 (avoids Python 3.14 C-API removal of ma_version_tag)
+# Pin chardet==5.2.0 (pure Python wheel, avoids x86-64 mypyc .so files on ARM64)
 # DOCX export uses pure-Python OpenXML fallback in app/exporters/docx_exporter.py (no lxml needed)
-requirements = python3==3.11.5,hostpython3==3.11.5,kivy,pillow,pypdf,openpyxl,et_xmlfile,pyjnius,certifi,urllib3,requests,chardet,idna,filetype
+requirements = python3==3.11.5,hostpython3==3.11.5,kivy,pillow,pypdf,openpyxl,et_xmlfile,pyjnius,certifi,urllib3,requests,chardet==5.2.0,idna,filetype
 
 # (str) Presplash of the application
 #presplash.filename = %(source.dir)s/assets/icons/presplash.png
@@ -46,7 +47,7 @@ fullscreen = 0
 #
 
 # (list) Permissions
-android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
+android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
 
 # (int) Target Android API, should be as high as possible.
 android.api = 33
@@ -88,8 +89,8 @@ android.debug_artifact = apk
 # Python for android (p4a) specific
 #
 
-# (str) python-for-android branch to use, defaults to master
-p4a.branch = master
+# (str) python-for-android directory with Android 16 16KB page-size alignment patches
+p4a.source_dir = /tmp/p4a
 
 # (str) Bootstrap to use for android builds
 p4a.bootstrap = sdl2

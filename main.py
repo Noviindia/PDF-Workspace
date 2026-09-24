@@ -10,6 +10,14 @@ import sys
 IS_ANDROID = ('ANDROID_ARGUMENT' in os.environ or 'ANDROID_ENTRYPOINT' in os.environ)
 USE_KIVY = '--kivy' in sys.argv or IS_ANDROID
 
+if IS_ANDROID:
+    _android_priv = os.environ.get('ANDROID_PRIVATE') or os.environ.get('ANDROID_ARGUMENT') or os.getcwd()
+    os.environ['PDFWORKSPACE_DIR'] = os.path.join(_android_priv, '.pdfworkspace')
+    try:
+        os.makedirs(os.environ['PDFWORKSPACE_DIR'], exist_ok=True)
+    except Exception:
+        pass
+
 if not USE_KIVY:
     try:
         from app.ui.desktop_app import run_desktop_app
@@ -26,30 +34,34 @@ if not USE_KIVY:
 # Set environment before importing Kivy
 os.environ['KIVY_LOG_LEVEL'] = 'info'
 
+import traceback
 from kivy.app import App
 from kivy.core.window import Window
-from kivy.uix.screenmanager import ScreenManager, SlideTransition
+from kivy.uix.screenmanager import ScreenManager, SlideTransition, Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.properties import ObjectProperty, StringProperty, BooleanProperty
 from kivy.utils import platform
 
-# Try KivyMD for Material Design
+HAS_KIVYMD = False
+_STARTUP_ERROR = None
+
 try:
-    from kivymd.app import MDApp
-    HAS_KIVYMD = True
-except ImportError:
-    HAS_KIVYMD = False
-
-from app.ui.screens.home_screen import HomeScreen
-from app.ui.screens.processing_screen import ProcessingScreen
-from app.ui.screens.workspace_screen import WorkspaceScreen
-from app.ui.screens.export_screen import ExportScreen
-from app.services.project_service import ProjectService
-from app.services.processing_service import ProcessingService
-from app.ui.theme import COLORS, get_color
+    from app.ui.screens.home_screen import HomeScreen
+    from app.ui.screens.processing_screen import ProcessingScreen
+    from app.ui.screens.workspace_screen import WorkspaceScreen
+    from app.ui.screens.export_screen import ExportScreen
+    from app.services.project_service import ProjectService
+    from app.services.processing_service import ProcessingService
+    from app.ui.theme import COLORS, get_color
+except Exception as _e:
+    _STARTUP_ERROR = traceback.format_exc()
+    print(f"Startup import error:\n{_STARTUP_ERROR}")
 
 
-class PDFWorkspaceApp(MDApp if HAS_KIVYMD else App):
+class PDFWorkspaceApp(App):
     """Main PDF Workspace Application."""
 
     title = 'PDF Workspace'
@@ -58,40 +70,68 @@ class PDFWorkspaceApp(MDApp if HAS_KIVYMD else App):
     processing_service = ObjectProperty(None, allownone=True)
     current_project_path = StringProperty('')
     is_processing = BooleanProperty(False)
-    privacy_label = StringProperty('🔒 Local Only')
+    privacy_label = StringProperty('Local Only')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.project_service = ProjectService()
+        self.project_service = None
+        if not _STARTUP_ERROR:
+            try:
+                self.project_service = ProjectService()
+            except Exception as e:
+                print(f"ProjectService init warning: {e}")
         self.screen_manager = None
 
     def build(self):
         """Build the application UI."""
-        # Configure theme
-        if HAS_KIVYMD:
-            self.theme_cls.theme_style = "Light"
-            self.theme_cls.primary_palette = "Blue"
-        
-        # Set window properties for desktop development
-        if platform not in ('android', 'ios'):
-            Window.size = (1200, 800)
-            Window.minimum_width = 800
-            Window.minimum_height = 600
-        
-        # Create screen manager
-        self.screen_manager = ScreenManager(transition=SlideTransition(duration=0.3))
-        
-        # Add screens
-        self.screen_manager.add_widget(HomeScreen(name='home'))
-        self.screen_manager.add_widget(ProcessingScreen(name='processing'))
-        self.screen_manager.add_widget(WorkspaceScreen(name='workspace'))
-        self.screen_manager.add_widget(ExportScreen(name='export'))
-        
-        # Bind keyboard shortcuts
-        if platform not in ('android', 'ios'):
-            Window.bind(on_keyboard=self._on_keyboard)
-        
-        return self.screen_manager
+        try:
+            if _STARTUP_ERROR:
+                return self._build_error_screen(_STARTUP_ERROR)
+
+            # Set window properties for desktop development
+            if platform not in ('android', 'ios'):
+                Window.size = (1200, 800)
+                Window.minimum_width = 800
+                Window.minimum_height = 600
+            
+            # Create screen manager
+            self.screen_manager = ScreenManager(transition=SlideTransition(duration=0.3))
+            
+            # Add screens
+            self.screen_manager.add_widget(HomeScreen(name='home'))
+            self.screen_manager.add_widget(ProcessingScreen(name='processing'))
+            self.screen_manager.add_widget(WorkspaceScreen(name='workspace'))
+            self.screen_manager.add_widget(ExportScreen(name='export'))
+            
+            # Bind keyboard shortcuts
+            if platform not in ('android', 'ios'):
+                Window.bind(on_keyboard=self._on_keyboard)
+            
+            return self.screen_manager
+        except Exception:
+            err_trace = traceback.format_exc()
+            print(f"UI build error:\n{err_trace}")
+            return self._build_error_screen(err_trace)
+
+    def _build_error_screen(self, error_text: str):
+        """Fallback diagnostic screen so the app never silently closes on error."""
+        root = BoxLayout(orientation='vertical', padding=20, spacing=10)
+        title = Label(
+            text="PDF Workspace - Diagnostic Log",
+            size_hint_y=None, height=50, bold=True
+        )
+        sv = ScrollView(size_hint=(1, 1))
+        lbl = Label(
+            text=error_text,
+            size_hint_y=None,
+            halign='left', valign='top'
+        )
+        lbl.bind(texture_size=lbl.setter('size'))
+        lbl.bind(width=lambda inst, w: setattr(inst, 'text_size', (w, None)))
+        sv.add_widget(lbl)
+        root.add_widget(title)
+        root.add_widget(sv)
+        return root
 
     def _on_keyboard(self, window, key, scancode, codepoint, modifier):
         """Handle keyboard shortcuts."""

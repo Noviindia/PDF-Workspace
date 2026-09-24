@@ -117,12 +117,62 @@ class HomeScreen(Screen):
             btn.bind(on_release=lambda x: self._on_recent_clicked(x.path))
             self.recent_list_layout.add_widget(btn)
 
-    def open_file_chooser(self, instance):
-        """Opens native file chooser on Android or Kivy FileChooser on Desktop."""
-        if platform == 'android' and filechooser:
-            filechooser.open_file(on_selection=self._on_android_file_selected, filters=[("PDF Files", "*.pdf")])
-        else:
-            self._show_kivy_file_chooser()
+    def open_file_chooser(self, instance=None):
+        """Opens native Android 16 Storage Access Framework PDF picker or Kivy FileChooser."""
+        if platform == 'android':
+            try:
+                from jnius import autoclass
+                from android import activity
+                from kivy.clock import Clock
+
+                Intent = autoclass('android.content.Intent')
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+
+                intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                intent.addCategory(Intent.CATEGORY_OPENABLE)
+                intent.setType("application/pdf")
+
+                def _on_activity_result(request_code, result_code, data):
+                    if request_code != 4242 or data is None:
+                        return
+                    try:
+                        uri = data.getData()
+                        if uri is None:
+                            return
+                        ctx = PythonActivity.mActivity
+                        resolver = ctx.getContentResolver()
+                        in_stream = resolver.openInputStream(uri)
+                        if in_stream is None:
+                            return
+
+                        # Read PDF bytes via Java byte[] buffer
+                        from android.storage import app_storage_path
+                        dest_dir = os.path.join(app_storage_path(), 'imported_pdfs')
+                        os.makedirs(dest_dir, exist_ok=True)
+                        dest_path = os.path.join(dest_dir, f"document_{int(__import__('time').time())}.pdf")
+
+                        FileOutputStream = autoclass('java.io.FileOutputStream')
+                        out_stream = FileOutputStream(dest_path)
+                        buf = bytearray(65536)
+                        while True:
+                            n = in_stream.read(buf)
+                            if n <= 0:
+                                break
+                            out_stream.write(buf, 0, n)
+                        out_stream.flush()
+                        out_stream.close()
+                        in_stream.close()
+
+                        Clock.schedule_once(lambda dt: self._on_file_selected(dest_path), 0)
+                    except Exception as e:
+                        print(f"Android SAF picker error: {e}")
+
+                activity.bind(on_activity_result=_on_activity_result)
+                PythonActivity.mActivity.startActivityForResult(intent, 4242)
+                return
+            except Exception as e:
+                print(f"Native Android file chooser fallback ({e})")
+        self._show_kivy_file_chooser()
 
     def _on_android_file_selected(self, selection):
         if selection:
@@ -130,7 +180,12 @@ class HomeScreen(Screen):
 
     def _show_kivy_file_chooser(self):
         content = BoxLayout(orientation='vertical')
-        fc = FileChooserListView(filters=['*.pdf'], path=os.path.expanduser('~'))
+        start_path = os.getcwd()
+        for candidate in ['/storage/emulated/0/Download', '/sdcard/Download', os.environ.get('ANDROID_PRIVATE', ''), os.path.expanduser('~')]:
+            if candidate and os.path.isdir(candidate) and os.access(candidate, os.R_OK):
+                start_path = candidate
+                break
+        fc = FileChooserListView(filters=['*.pdf'], path=start_path)
         
         btn_layout = BoxLayout(size_hint_y=None, height=dp(50))
         cancel_btn = Button(text="Cancel")
