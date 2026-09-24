@@ -56,6 +56,7 @@ jobs:
             libssl-dev \
             automake \
             gettext \
+            libltdl-dev \
             ccache \
             patch
 
@@ -64,9 +65,9 @@ jobs:
           python -m pip install --upgrade pip "setuptools<70.0.0" wheel
           pip install "cython<3.0.0" buildozer==1.5.0
 
-      - name: Clone & Patch python-for-android (release-2024.01.21) for Android 16 (16KB Page Size & Pure ARM64)
+      - name: Clone & Patch python-for-android (master) for Android 16 (16KB Page Size & Pure ARM64)
         run: |
-          git clone --branch release-2024.01.21 --depth 1 https://github.com/kivy/python-for-android.git /tmp/p4a
+          git clone --branch master --depth 1 https://github.com/kivy/python-for-android.git /tmp/p4a
           python3 - << 'EOF'
           import glob
 
