@@ -13,21 +13,21 @@ package.domain = org.pdfworkspace
 source.dir = .
 
 # (list) Source files to include (let empty to include all the files)
-source.include_exts = py,png,jpg,jpeg,kv,atlas,json,ttf,otf,pdf,md
+source.include_exts = py,png,jpg,jpeg,kv,atlas,json,ttf,otf,pdf,md,traineddata
 
 # (list) Source files to exclude
-source.exclude_exts = spec
+source.exclude_exts = spec,apk,zip
 
 # (list) List of directory to exclude
-source.exclude_dirs = tests,scripts,bin,.git,__pycache__,.venv,venv
+source.exclude_dirs = tests,scripts,bin,.git,__pycache__,.venv,venv,.buildozer,.pdfworkspace
 
 # (str) Application versioning
 version = 1.0.0
 
 # (list) Application requirements
-# Note: pypdf is pure Python (Android compatible), PyMuPDF is NOT
-# lxml is needed by python-docx, has p4a recipe
-requirements = python3,kivy==2.3.0,kivymd==2.0.1,pillow,pypdf,python-docx,openpyxl,lxml,pyjnius,chrome-lens-py,httpx
+# Pin both python3 and hostpython3 to 3.11.5 (avoids Python 3.14 C-API removal of ma_version_tag)
+# DOCX export uses pure-Python OpenXML fallback in app/exporters/docx_exporter.py (no lxml needed)
+requirements = python3==3.11.5,hostpython3==3.11.5,kivy,pillow,pypdf,openpyxl,et_xmlfile,pyjnius,certifi,urllib3,requests,chardet,idna,filetype
 
 # (str) Presplash of the application
 #presplash.filename = %(source.dir)s/assets/icons/presplash.png

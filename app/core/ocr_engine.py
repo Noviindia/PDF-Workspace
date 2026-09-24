@@ -207,11 +207,15 @@ class OCREngine:
 
     def _ocr_lens(self, file_path: str, page_number: int, language: str = 'eng+hin') -> OCRResult:
         """OCR using Google Lens API via chrome-lens-py with word-level bounding boxes."""
-        import fitz
+        try:
+            import fitz
+            from chrome_lens_py import LensAPI
+        except ImportError:
+            return OCRResult(text="", confidence=0.0)
+
         import asyncio
         import concurrent.futures
         import tempfile
-        from chrome_lens_py import LensAPI
 
         doc = fitz.open(file_path)
         if page_number < 0 or page_number >= len(doc):
@@ -541,9 +545,22 @@ class OCREngine:
             # Run Tesseract
             tess = TessBaseAPI()
             
-            # Find tessdata directory
-            from android.storage import app_storage_path  # type: ignore
-            tess_data_path = os.path.join(app_storage_path(), 'tessdata')
+            # Find tessdata directory (copy bundled assets/tessdata if needed)
+            bundled_tess = get_tessdata_dir()
+            try:
+                from android.storage import app_storage_path  # type: ignore
+                tess_data_path = os.path.join(app_storage_path(), 'tessdata')
+            except Exception:
+                tess_data_path = bundled_tess or '/sdcard/tessdata'
+
+            if bundled_tess and bundled_tess != tess_data_path:
+                os.makedirs(tess_data_path, exist_ok=True)
+                import shutil
+                for fn in os.listdir(bundled_tess):
+                    if fn.endswith('.traineddata'):
+                        dst = os.path.join(tess_data_path, fn)
+                        if not os.path.exists(dst):
+                            shutil.copy2(os.path.join(bundled_tess, fn), dst)
             
             if not tess.init(os.path.dirname(tess_data_path), language):
                 print("Tesseract4Android init failed - missing traineddata?")

@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -33,12 +36,17 @@ jobs:
 
       - name: Install Buildozer & Cython
         run: |
-          pip install --upgrade pip
-          pip install "cython<3.0.0" buildozer virtualenv
+          pip install --upgrade pip "setuptools<70.0.0" wheel
+          pip install "cython>=0.29.33,<=3.0.12" buildozer virtualenv
 
       - name: Build Android APK with Buildozer
         run: |
-          buildozer android debug
+          rm -rf .buildozer bin
+          yes | buildozer android debug || {
+            echo "=== BUILDOZER FAILURE LOGS ==="
+            find .buildozer -name "*.log" -exec tail -n 100 {} + || true
+            exit 1
+          }
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -46,3 +54,14 @@ jobs:
           name: PDFWorkspace-Debug-APK
           path: bin/*.apk
           retention-days: 30
+
+      - name: Publish APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "PDF Workspace v1.0.0 (Android APK)"
+          body: "Native Android ARM64 APK build of PDF Workspace & Converter."
+          files: bin/*.apk
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
