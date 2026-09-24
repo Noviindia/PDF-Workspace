@@ -14,7 +14,7 @@ If no backend is available, OCR is gracefully disabled.
 
 import os
 import sys
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Tuple, Callable, Union
 from dataclasses import dataclass, field
 
 IS_ANDROID = ('ANDROID_ARGUMENT' in os.environ or 'ANDROID_ENTRYPOINT' in os.environ)

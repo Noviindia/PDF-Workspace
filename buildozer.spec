@@ -22,7 +22,7 @@ source.exclude_exts = spec,apk,zip
 source.exclude_dirs = tests,scripts,bin,.git,__pycache__,.venv,venv,.buildozer,.pdfworkspace
 
 # (str) Application versioning
-version = 1.0.1
+version = 1.0.2
 
 # (list) Application requirements
 # Pin both python3 and hostpython3 to 3.11.5 (avoids Python 3.14 C-API removal of ma_version_tag)

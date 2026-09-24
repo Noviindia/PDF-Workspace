@@ -35,8 +35,11 @@ jobs:
         with:
           path: |
             ~/.buildozer
-            .buildozer/android/platform/build-arm64-v8a/packages
-          key: buildozer-sdk-ndk-r25b-v2
+            .buildozer/android/platform/build-arm64-v8a
+          key: buildozer-sdk-ndk-r25b-v3
+          restore-keys: |
+            buildozer-sdk-ndk-r25b-v2
+            buildozer-sdk-ndk-r25b-
 
       - name: Install System Dependencies
         run: |
@@ -149,8 +152,8 @@ jobs:
         with:
           path: |
             ~/.buildozer
-            .buildozer/android/platform/build-arm64-v8a/packages
-          key: buildozer-sdk-ndk-r25b-v2
+            .buildozer/android/platform/build-arm64-v8a
+          key: buildozer-sdk-ndk-r25b-v3
 
       - name: Verify APK 16KB ELF Alignment & Pure ARM64 Bundle
         run: |
@@ -171,9 +174,9 @@ jobs:
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: "PDF Workspace & Converter v1.0.1 (Android 16 / OnePlus 13R)"
-          body: "Automated Android 16 (16KB ELF page-aligned, pure ARM64) APK build of PDF Workspace & Converter."
+          tag_name: v1.0.2
+          name: "PDF Workspace & Converter v1.0.2 (Android 16 / OnePlus 13R)"
+          body: "Automated Android 16 (16KB ELF page-aligned, pure ARM64) APK build of PDF Workspace & Converter with Dict typing fix."
           files: bin/*.apk
           prerelease: false
         env:
